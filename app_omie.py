@@ -2,10 +2,9 @@ import streamlit as st
 import requests
 import pandas as pd
 
-st.set_page_config(page_title="Teste de Identidade Omie", layout="wide")
-st.title("🆔 Em qual empresa estou conectado?")
+st.set_page_config(page_title="Teste Simplificado Omie", layout="wide")
+st.title("🔍 Teste Final: Método Simplificado")
 
-# --- Carregar Chaves ---
 if "omie" in st.secrets:
     app_key = st.secrets["omie"]["app_key"]
     app_secret = st.secrets["omie"]["app_secret"]
@@ -14,88 +13,78 @@ else:
     app_key = st.sidebar.text_input("App Key", type="password").strip()
     app_secret = st.sidebar.text_input("App Secret", type="password").strip()
 
-if st.button("Descobrir Empresa e Produtos"):
+if st.button("Buscar Produtos (Modo Resumido)"):
     if not app_key or not app_secret:
         st.error("Preciso das chaves.")
     else:
-        # Vamos testar 2 coisas diferentes para triangular onde estamos
-        url_clientes = "https://app.omie.com.br/api/v1/geral/clientes/"
-        url_produtos = "https://app.omie.com.br/api/v1/geral/produtos/"
+        # URL Geral
+        url_prod = "https://app.omie.com.br/api/v1/geral/produtos/"
+        url_serv = "https://app.omie.com.br/api/v1/servicos/servico/"
         
-        # --- TESTE 1: LISTAR CLIENTES (Prova de Vida) ---
-        # Toda empresa ativa tem clientes. Se vier zero, é uma empresa fantasma/vazia.
-        st.subheader("1. Quem são os Clientes desta conta?")
+        # --- TENTATIVA 1: PRODUTOS RESUMIDOS ---
+        # Esse método é "blindado". Ele costuma funcionar quando o ListarProdutos falha.
+        st.subheader("1. Buscando Produtos (Modo Resumido)")
         try:
-            payload_cli = {
-                "call": "ListarClientes",
+            payload_res = {
+                "call": "ListarProdutosResumido",
                 "app_key": app_key, 
                 "app_secret": app_secret,
-                "param": [{"pagina": 1, "registros_por_pagina": 5}]
+                "param": [{
+                    "pagina": 1, 
+                    "registros_por_pagina": 20,
+                    "apenas_importado_api": "N" # Tenta manual primeiro
+                }]
             }
-            resp_cli = requests.post(url_clientes, json=payload_cli)
             
-            if resp_cli.status_code == 200:
-                data_cli = resp_cli.json()
-                clientes = data_cli.get("clientes_cadastro", [])
-                
-                if clientes:
-                    st.success(f"✅ Conectado! Encontrei {data_cli.get('total_de_registros')} clientes.")
-                    st.write("Veja se reconhece esses nomes (isso confirma a empresa):")
-                    # Mostra nomes para o usuário reconhecer a empresa
-                    lista_nomes = [{"Nome do Cliente": c.get("nome_fantasia"), "Razão Social": c.get("razao_social")} for c in clientes]
-                    st.table(pd.DataFrame(lista_nomes))
+            resp = requests.post(url_prod, json=payload_res)
+            
+            if resp.status_code == 200:
+                data = resp.json()
+                lista = data.get("produto_servico_resumido", [])
+                if lista:
+                    st.success(f"✅ SUCESSO! Encontrei {len(lista)} produtos resumidos.")
+                    st.dataframe(pd.DataFrame(lista))
                 else:
-                    st.error("❌ Lista de Clientes VAZIA.")
-                    st.warning("Se essa empresa tem clientes no site e aqui deu zero, a chave API está errada (gerada em outra filial vazia).")
+                    st.warning("⚠️ O modo resumido retornou lista vazia para produtos manuais.")
+                    
+                    # Tenta Importados se o manual falhou
+                    st.write("Tentando buscar importados...")
+                    payload_res["param"][0]["apenas_importado_api"] = "S"
+                    resp2 = requests.post(url_prod, json=payload_res)
+                    lista2 = resp2.json().get("produto_servico_resumido", [])
+                    if lista2:
+                         st.success(f"✅ SUCESSO! Encontrei {len(lista2)} produtos importados.")
+                         st.dataframe(pd.DataFrame(lista2))
+                    else:
+                         st.error("❌ Nada nos importados também.")
             else:
-                st.error(f"Erro ao ler clientes: {resp_cli.status_code}")
+                st.error(f"Erro no modo resumido: {resp.status_code}")
+                st.write(resp.text)
+                
         except Exception as e:
-            st.error(f"Erro técnico Clientes: {e}")
+            st.error(f"Erro técnico: {e}")
 
         st.markdown("---")
 
-        # --- TESTE 2: LISTAR PRODUTOS (Sem filtros quebrados) ---
-        st.subheader("2. Tentativa Limpa de Produtos")
+        # --- TENTATIVA 2: SERVIÇOS ---
+        # Vai que o "Tubo" está cadastrado como serviço...
+        st.subheader("2. Verificando Serviços")
         try:
-            # Tenta buscar SEM NENHUM FILTRO extra, apenas paginação
-            # Testamos as duas origens (API e Manual)
-            found_any = False
-            for origem in ["N", "S"]:
-                label = "Manual (Padrão)" if origem == "N" else "Importado (API)"
+            payload_serv = {
+                "call": "ListarCadastroServico",
+                "app_key": app_key, 
+                "app_secret": app_secret,
+                "param": [{"pagina": 1, "registros_por_pagina": 20}]
+            }
+            resp_s = requests.post(url_serv, json=payload_serv)
+            data_s = resp_s.json()
+            lista_s = data_s.get("cadastros_servicos", [])
+            
+            if lista_s:
+                st.info(f"ℹ️ Encontrei {len(lista_s)} serviços cadastrados.")
+                st.write(f"Exemplo: {lista_s[0].get('descricao')}")
+            else:
+                st.write("Nenhum serviço encontrado.")
                 
-                payload_prod = {
-                    "call": "ListarProdutos",
-                    "app_key": app_key,
-                    "app_secret": app_secret,
-                    "param": [{
-                        "pagina": 1, 
-                        "registros_por_pagina": 5, 
-                        "apenas_importado_api": origem
-                    }]
-                }
-                
-                resp_prod = requests.post(url_produtos, json=payload_prod)
-                if resp_prod.status_code == 200:
-                    data_prod = resp_prod.json()
-                    lista_prod = data_prod.get("produto_servico_cadastro", [])
-                    if lista_prod:
-                        st.success(f"✅ Sucesso na busca {label}! Exibindo primeiros itens:")
-                        amostra = [{"Código": p.get("codigo"), "Descrição": p.get("descricao")} for p in lista_prod]
-                        st.table(pd.DataFrame(amostra))
-                        found_any = True
-                    else:
-                        st.info(f"Busca {label}: Retornou 0 produtos.")
-                else:
-                    st.write(f"Erro na busca {label}: {resp_prod.status_code}")
-
-            if not found_any:
-                st.error("⚠️ Resumo: A chave é válida, mas não achou produtos em nenhum modo.")
-                st.markdown("""
-                **Diagnóstico Provável:**
-                1. Olhe o **Teste 1 (Clientes)** acima. 
-                2. Se os clientes que apareceram NÃO SÃO da empresa que tem os produtos "Tubo", então **a chave API foi gerada na empresa errada**.
-                3. Entre no Omie, troque a empresa no topo, vá em Configurações > API e gere uma chave nova lá.
-                """)
-
         except Exception as e:
-            st.error(f"Erro técnico Produtos: {e}")
+            st.write(f"Erro ao ler serviços (pode ser normal se não usar): {e}")
