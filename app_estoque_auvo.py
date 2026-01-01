@@ -8,6 +8,15 @@ import os
 ARQUIVO_CONFIG = "config_auvo.json"
 
 def carregar_chaves():
+    # 1. Tenta ler dos Segredos da Nuvem (Streamlit Cloud)
+    if "auvo" in st.secrets:
+        return {
+            "api_key": st.secrets["auvo"]["api_key"],
+            "api_token": st.secrets["auvo"]["api_token"],
+            "endpoint": st.secrets["auvo"].get("endpoint", "products")
+        }
+    
+    # 2. Se não achar na nuvem, tenta ler do arquivo local (seu PC)
     if os.path.exists(ARQUIVO_CONFIG):
         try:
             with open(ARQUIVO_CONFIG, "r") as f:
@@ -149,4 +158,5 @@ if st.button("Consultar"):
                     st.error(f"Erro na consulta ({response.status_code}): {response.text}")
 
             except Exception as e:
+
                 st.error(f"Ocorreu um erro técnico: {e}")
