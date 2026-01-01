@@ -80,7 +80,6 @@ with st.sidebar:
         salvar_auto = st.checkbox("Memorizar dados", value=True)
     else:
         salvar_auto = False # Na nuvem não salvamos localmente
-
 # --- Função de Login ---
 def fazer_login_auvo(key, token):
     url_login = "https://api.auvo.com.br/v2/login"
@@ -182,4 +181,5 @@ if st.button("Consultar"):
             except Exception as e:
 
                 st.error(f"Ocorreu um erro técnico: {e}")
+
 
