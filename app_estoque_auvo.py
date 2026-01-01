@@ -44,20 +44,42 @@ token_salvo = memoria.get("api_token", "")
 endpoint_salvo = memoria.get("endpoint", "equipments")
 
 # --- Barra Lateral ---
+# --- Barra Lateral ---
 with st.sidebar:
     st.header("Configuração")
-    api_key = st.text_input("API Key (Chave)", value=key_salva, type="password").strip()
-    api_token = st.text_input("API Token", value=token_salvo, type="password").strip()
+    
+    # --- LOGICA DE SEGURANÇA ---
+    # Se existirem chaves nos 'Secrets' (Nuvem), usamos elas e escondemos os campos.
+    if "auvo" in st.secrets:
+        api_key = st.secrets["auvo"]["api_key"]
+        api_token = st.secrets["auvo"]["api_token"]
+        st.success("🔒 Acesso Seguro Ativo")
+        st.caption("As credenciais estão ocultas e protegidas.")
+    else:
+        # Se NÃO tiver secrets (uso local no seu PC), mostra os campos para digitar
+        api_key = st.text_input("API Key (Chave)", value=key_salva, type="password").strip()
+        api_token = st.text_input("API Token", value=token_salvo, type="password").strip()
     
     st.markdown("---")
     
+    # O resto continua igual (Seletor de Tipo e Checkbox)
     opcoes_validas = ["equipments", "products", "materials"]
+    
+    # Tenta definir o valor padrão
     index_sel = 0
-    if endpoint_salvo in opcoes_validas:
-        index_sel = opcoes_validas.index(endpoint_salvo)
+    # Se tiver secrets, tenta pegar a preferência de lá, senão usa a memória local
+    pref_endpoint = st.secrets["auvo"].get("endpoint") if "auvo" in st.secrets else endpoint_salvo
+    
+    if pref_endpoint in opcoes_validas:
+        index_sel = opcoes_validas.index(pref_endpoint)
 
     endpoint = st.selectbox("Tipo de Busca", opcoes_validas, index=index_sel)
-    salvar_auto = st.checkbox("Memorizar dados", value=True)
+    
+    # Só mostra opção de salvar se estiver no modo manual (local)
+    if "auvo" not in st.secrets:
+        salvar_auto = st.checkbox("Memorizar dados", value=True)
+    else:
+        salvar_auto = False # Na nuvem não salvamos localmente
 
 # --- Função de Login ---
 def fazer_login_auvo(key, token):
@@ -160,3 +182,4 @@ if st.button("Consultar"):
             except Exception as e:
 
                 st.error(f"Ocorreu um erro técnico: {e}")
+
