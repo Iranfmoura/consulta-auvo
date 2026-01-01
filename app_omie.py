@@ -2,8 +2,8 @@ import streamlit as st
 import requests
 import pandas as pd
 
-st.set_page_config(page_title="Teste Simplificado Omie", layout="wide")
-st.title("🔍 Teste Final: Método Simplificado")
+st.set_page_config(page_title="Teste Unitário Omie", layout="wide")
+st.title("🎯 Busca de Precisão (Código Exato)")
 
 if "omie" in st.secrets:
     app_key = st.secrets["omie"]["app_key"]
@@ -13,78 +13,54 @@ else:
     app_key = st.sidebar.text_input("App Key", type="password").strip()
     app_secret = st.sidebar.text_input("App Secret", type="password").strip()
 
-if st.button("Buscar Produtos (Modo Resumido)"):
-    if not app_key or not app_secret:
-        st.error("Preciso das chaves.")
+# Entrada do Código
+codigo_alvo = st.text_input("Digite o CÓDIGO de um produto que existe (ex: 001, TUB-X):")
+
+if st.button("Consultar Este Produto"):
+    if not app_key or not codigo_alvo:
+        st.warning("Preencha o código do produto para testar.")
     else:
-        # URL Geral
-        url_prod = "https://app.omie.com.br/api/v1/geral/produtos/"
-        url_serv = "https://app.omie.com.br/api/v1/servicos/servico/"
+        url = "https://app.omie.com.br/api/v1/geral/produtos/"
         
-        # --- TENTATIVA 1: PRODUTOS RESUMIDOS ---
-        # Esse método é "blindado". Ele costuma funcionar quando o ListarProdutos falha.
-        st.subheader("1. Buscando Produtos (Modo Resumido)")
+        # Vamos tentar o comando de consulta direta, que ignora filtros de listagem
+        payload = {
+            "call": "ConsultarProduto",
+            "app_key": app_key,
+            "app_secret": app_secret,
+            "param": [{
+                "codigo": codigo_alvo.strip() # Busca pelo código visual do produto
+            }]
+        }
+
         try:
-            payload_res = {
-                "call": "ListarProdutosResumido",
-                "app_key": app_key, 
-                "app_secret": app_secret,
-                "param": [{
-                    "pagina": 1, 
-                    "registros_por_pagina": 20,
-                    "apenas_importado_api": "N" # Tenta manual primeiro
-                }]
-            }
+            st.info(f"Perguntando ao Omie: 'Você conhece o produto {codigo_alvo}?'")
+            response = requests.post(url, json=payload)
             
-            resp = requests.post(url_prod, json=payload_res)
-            
-            if resp.status_code == 200:
-                data = resp.json()
-                lista = data.get("produto_servico_resumido", [])
-                if lista:
-                    st.success(f"✅ SUCESSO! Encontrei {len(lista)} produtos resumidos.")
-                    st.dataframe(pd.DataFrame(lista))
-                else:
-                    st.warning("⚠️ O modo resumido retornou lista vazia para produtos manuais.")
-                    
-                    # Tenta Importados se o manual falhou
-                    st.write("Tentando buscar importados...")
-                    payload_res["param"][0]["apenas_importado_api"] = "S"
-                    resp2 = requests.post(url_prod, json=payload_res)
-                    lista2 = resp2.json().get("produto_servico_resumido", [])
-                    if lista2:
-                         st.success(f"✅ SUCESSO! Encontrei {len(lista2)} produtos importados.")
-                         st.dataframe(pd.DataFrame(lista2))
-                    else:
-                         st.error("❌ Nada nos importados também.")
-            else:
-                st.error(f"Erro no modo resumido: {resp.status_code}")
-                st.write(resp.text)
+            if response.status_code == 200:
+                prod = response.json()
+                st.balloons()
+                st.success("✅ ACHEI! O produto existe e a API conseguiu ler.")
                 
+                # Mostra os dados principais
+                st.json({
+                    "Nome": prod.get("descricao"),
+                    "Preço": prod.get("valor_unitario"),
+                    "Estoque (Info Cadastro)": prod.get("estoque_minimo"),
+                    "Origem": prod.get("origem_mercadoria")
+                })
+                st.success("Diagnóstico: O problema está apenas na LISTAGEM (paginação), mas a consulta direta funciona!")
+                
+            elif response.status_code == 500:
+                erro = response.json()
+                msg = erro.get("faultstring", "")
+                st.error(f"❌ Erro 500: {msg}")
+                
+                if "TAG [CODIGO]" in msg or "nao encontrado" in msg.lower():
+                    st.warning("O Omie disse que esse código não existe. Tem certeza que digitou igual ao site?")
+                elif "permissao" in msg.lower() or "acesso" in msg.lower():
+                    st.error("🚨 PROBLEMA ENCONTRADO: PERMISSÃO NEGADA. A chave não pode ver produtos.")
+            else:
+                st.error(f"Erro desconhecido: {response.status_code} - {response.text}")
+
         except Exception as e:
             st.error(f"Erro técnico: {e}")
-
-        st.markdown("---")
-
-        # --- TENTATIVA 2: SERVIÇOS ---
-        # Vai que o "Tubo" está cadastrado como serviço...
-        st.subheader("2. Verificando Serviços")
-        try:
-            payload_serv = {
-                "call": "ListarCadastroServico",
-                "app_key": app_key, 
-                "app_secret": app_secret,
-                "param": [{"pagina": 1, "registros_por_pagina": 20}]
-            }
-            resp_s = requests.post(url_serv, json=payload_serv)
-            data_s = resp_s.json()
-            lista_s = data_s.get("cadastros_servicos", [])
-            
-            if lista_s:
-                st.info(f"ℹ️ Encontrei {len(lista_s)} serviços cadastrados.")
-                st.write(f"Exemplo: {lista_s[0].get('descricao')}")
-            else:
-                st.write("Nenhum serviço encontrado.")
-                
-        except Exception as e:
-            st.write(f"Erro ao ler serviços (pode ser normal se não usar): {e}")
